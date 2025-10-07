@@ -1,4 +1,4 @@
-# modules/security/variables.tf
+# modules/security/variables.tf.tf
 variable "environment" {
   description = "Environment name"
   type        = string

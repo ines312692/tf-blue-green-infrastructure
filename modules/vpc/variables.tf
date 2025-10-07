@@ -1,4 +1,4 @@
-# modules/vpc/variables.tf
+# modules/vpc/variables.tf.tf
 variable "environment" {
   description = "Environment name"
   type        = string

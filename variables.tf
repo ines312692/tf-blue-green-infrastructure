@@ -1,167 +1,202 @@
-# variables.tf
-variable "aws_region" {
-  description = "AWS region for resources"
-  type        = string
-  default     = "us-east-1"
+variable "project_settings" {
+  description = "Project configuration settings"
+  type = object({
+    project     = string
+    aws_region  = string
+    name_prefix = string
+  })
 }
 
-variable "environment" {
-  description = "Environment name (dev, staging, production)"
-  type        = string
-
-  validation {
-    condition     = can(regex("^(dev|staging|production)$", var.environment))
-    error_message = "Environment must be dev, staging, or production."
-  }
+variable "network" {
+  description = "Network configuration settings per environment with global flags"
+  type = map(object({
+    enable_dns_support       = bool
+    enable_dns_hostnames     = bool
+    vpc_cidr                 = string
+    public_subnets           = list(string)
+    private_subnets          = list(string)
+    availability_zones       = list(string)
+    eip_domain               = string
+    default_route_cidr_block = string
+  }))
 }
 
-variable "app_name" {
-  description = "Application name"
-  type        = string
-  default     = "myapp"
+
+variable "load_balancer" {
+  description = "Load balancer configuration settings"
+  type = object({
+    alb_settings = object({
+      internal                   = bool
+      enable_deletion_protection = bool
+      load_balancer_type         = string
+    })
+    lb_target_group = object({
+      port     = number
+      protocol = string
+    })
+    lb_health_check = object({
+      path                = string
+      interval            = number
+      timeout             = number
+      healthy_threshold   = number
+      unhealthy_threshold = number
+      matcher             = string
+    })
+    listener = object({
+      port = object({
+        http  = number
+        https = number
+      })
+      protocol = object({
+        http  = string
+        https = string
+      })
+      action_type = string
+    })
+  })
 }
 
-variable "vpc_cidr" {
-  description = "CIDR block for VPC"
-  type        = string
-  default     = "10.0.0.0/16"
+variable "security_groups" {
+  description = "Security groups configuration"
+  type = object({
+    port = object({
+      http  = number
+      https = number
+      mysql = number
+      redis = number
+      any   = number
+    })
+    protocol = object({
+      tcp = string
+      any = string
+    })
+  })
 }
 
-variable "availability_zones" {
-  description = "List of availability zones"
-  type        = list(string)
-  default     = ["us-east-1a", "us-east-1b", "us-east-1c"]
+variable "launch_template" {
+  description = "Launch template settings per environment"
+  type = map(object({
+    architecture  = string
+    storage       = string
+    instance_type = string
+  }))
 }
 
-variable "public_subnets" {
-  description = "Public subnet CIDR blocks"
-  type        = list(string)
-  default     = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+variable "autoscaling" {
+  description = "Auto Scaling configuration per environment"
+  type = map(object({
+    desired_capacity          = number
+    max_size                  = number
+    min_size                  = number
+    health_check_type         = string
+    health_check_grace_period = number
+    version                   = string
+    propagate_at_launch       = bool
+  }))
 }
 
-variable "private_subnets" {
-  description = "Private subnet CIDR blocks"
-  type        = list(string)
-  default     = ["10.0.11.0/24", "10.0.12.0/24", "10.0.13.0/24"]
+variable "database" {
+  description = "Database settings per environment"
+  type = map(object({
+    engine                  = string
+    instance_class          = string
+    initial_storage         = number
+    username                = string
+    password                = string
+    delete_automated_backup = bool
+    iam_authentication      = bool
+    multi_az                = bool
+    backup_retention_period = number
+    backup_window           = string
+  }))
 }
 
-variable "active_environment" {
-  description = "Currently active environment (blue or green)"
-  type        = string
-  default     = "blue"
-
-  validation {
-    condition     = contains(["blue", "green"], var.active_environment)
-    error_message = "Active environment must be either 'blue' or 'green'."
-  }
+variable "redis" {
+  description = "ElastiCache Redis settings per environment"
+  type = map(object({
+    node_type = string
+    redis_settings = object({
+      engine             = string
+      num_cache_clusters = number
+    })
+  }))
 }
 
-variable "blue_container_image" {
-  description = "Docker image for blue environment"
-  type        = string
+variable "alarm" {
+  description = "CloudWatch alarm configuration"
+  type = object({
+    namespace = object({
+      ec2   = string
+      rds   = string
+      redis = string
+      logs  = string
+    })
+    metric = object({
+      cpu        = string
+      memory     = string
+      conn       = string
+      redis_conn = string
+      nginx_5xx  = string
+      rds_error  = string
+      redis_err  = string
+      app_error  = string
+    })
+    threshold = object({
+      cpu        = number
+      memory     = number
+      conn       = number
+      redis_conn = number
+      nginx_5xx  = number
+      rds_error  = number
+      redis_err  = number
+      app_error  = number
+    })
+    dim = object({
+      ec2   = string
+      rds   = string
+      redis = string
+    })
+    attr = object({
+      ec2   = string
+      rds   = string
+      redis = string
+    })
+    common_settings = object({
+      comparison_operator = string
+      evaluation_periods  = number
+      period              = number
+      statistic           = string
+    })
+    alert_email = string
+  })
 }
 
-variable "green_container_image" {
-  description = "Docker image for green environment"
-  type        = string
-}
-
-variable "container_port" {
-  description = "Port exposed by the container"
-  type        = number
-  default     = 80
-}
-
-variable "desired_count" {
-  description = "Desired number of tasks for active environment"
-  type        = number
-  default     = 2
-
-  validation {
-    condition     = var.desired_count > 0
-    error_message = "Desired count must be greater than 0."
-  }
-}
-
-variable "standby_count" {
-  description = "Number of tasks for standby environment"
-  type        = number
-  default     = 0
-}
-
-variable "task_cpu" {
-  description = "CPU units for task (256, 512, 1024, 2048, 4096)"
-  type        = string
-  default     = "256"
-
-  validation {
-    condition     = contains(["256", "512", "1024", "2048", "4096"], var.task_cpu)
-    error_message = "Task CPU must be 256, 512, 1024, 2048, or 4096."
-  }
-}
-
-variable "task_memory" {
-  description = "Memory for task in MB"
-  type        = string
-  default     = "512"
-}
-
-variable "health_check_path" {
-  description = "Path for health checks"
-  type        = string
-  default     = "/health"
-}
-
-variable "health_check_interval" {
-  description = "Health check interval in seconds"
-  type        = number
-  default     = 30
-}
-
-variable "health_check_timeout" {
-  description = "Health check timeout in seconds"
-  type        = number
-  default     = 5
-}
-
-variable "healthy_threshold" {
-  description = "Number of consecutive health checks to consider healthy"
-  type        = number
-  default     = 2
-}
-
-variable "unhealthy_threshold" {
-  description = "Number of consecutive health checks to consider unhealthy"
-  type        = number
-  default     = 3
-}
-
-variable "certificate_arn" {
-  description = "ARN of ACM certificate for HTTPS (leave empty for HTTP only)"
-  type        = string
-  default     = ""
-}
-
-variable "domain_name" {
-  description = "Domain name for Route53 record (leave empty to skip)"
-  type        = string
-  default     = ""
-}
-
-variable "alarm_email" {
-  description = "Email address for CloudWatch alarm notifications"
-  type        = string
-  default     = ""
-}
-
-variable "enable_deletion_protection" {
-  description = "Enable deletion protection on ALB"
-  type        = bool
-  default     = true
-}
-
-variable "log_retention_days" {
-  description = "CloudWatch log retention in days"
-  type        = number
-  default     = 7
+variable "logs" {
+  description = "CloudWatch Logs configuration"
+  type = object({
+    retention_in_days = number
+    group_paths = object({
+      application = string
+      nginx       = string
+      system      = string
+      rds         = string
+      redis       = string
+    })
+    filters = object({
+      pattern = object({
+        error  = string
+        status = string
+      })
+      transformation = object({
+        name = object({
+          app   = string
+          nginx = string
+          rds   = string
+          redis = string
+        })
+        namespace = string
+        value     = string
+      })
+    })
+  })
 }

@@ -1,4 +1,4 @@
-# modules/ecs-service/variables.tf
+# modules/ecs-service/variables.tf.tf
 variable "environment" {
   description = "Environment name"
   type        = string

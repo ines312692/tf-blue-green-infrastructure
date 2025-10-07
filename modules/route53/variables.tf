@@ -1,4 +1,4 @@
-# modules/route53/variables.tf
+# modules/route53/variables.tf.tf
 variable "environment" {
   description = "Environment name"
   type        = string

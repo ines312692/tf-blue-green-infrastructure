@@ -1,121 +1,59 @@
-# main.tf
-terraform {
-  required_version = ">= 1.0"
+module "network" {
+  source           = "./modules/network"
+  environment      = terraform.workspace
+  prefix           = local.name_prefix
+  project_settings = var.project_settings
+  network          = var.network[terraform.workspace]
+  load_balancer    = var.load_balancer
+  security_groups  = var.security_groups
+}
 
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
+module "environment" {
+  source           = "./modules/environment"
+  environment      = terraform.workspace
+  project_settings = var.project_settings
+  prefix           = local.name_prefix
+
+  policies_path   = local.policies
+  scripts_path    = local.scripts
+  security_groups = var.security_groups
+
+  launch_template       = var.launch_template[terraform.workspace]
+  ec2_security_group_id = module.network.ec2_security_group_id
+  autoscaling           = var.autoscaling[terraform.workspace]
+  target_group_arn      = module.network.target_group_arn
+
+  database              = var.database[terraform.workspace]
+  private_subnet_ids    = module.network.private_subnet_ids
+  db_security_group_ids = [module.network.db_security_group_id]
+  rds_subnet_group_name = module.network.rds_subnet_group_name
+
+  redis                   = var.redis[terraform.workspace]
+  redis_subnet_group_name = module.network.redis_subnet_group_name
+  redis_security_group_id = module.network.redis_security_group_id
+
+  depends_on = [
+    module.network,
+  ]
+}
+
+module "cloudwatch" {
+  source      = "./modules/cloudwatch"
+  aws_region  = var.project_settings.aws_region
+  alarm       = var.alarm
+  logs        = var.logs
+  environment = terraform.workspace
+  env_configs = {
+    (terraform.workspace) = {
+      asg_name = module.environment.asg_name
+      rds_id   = module.environment.rds_id
+      redis_id = module.environment.redis_id
     }
   }
+  vpc_id = module.network.vpc_id
 
-  backend "s3" {
-    # Backend config is provided via backend.tf in environment folders
-  }
-}
-
-provider "aws" {
-  region = var.aws_region
-
-  default_tags {
-    tags = {
-      Project     = "BlueGreenDeployment"
-      ManagedBy   = "Terraform"
-      Environment = var.environment
-    }
-  }
-}
-
-# VPC Module
-module "vpc" {
-  source = "./modules/vpc"
-
-  environment         = var.environment
-  vpc_cidr           = var.vpc_cidr
-  availability_zones = var.availability_zones
-  public_subnets     = var.public_subnets
-  private_subnets    = var.private_subnets
-}
-
-# Security Groups Module
-module "security_groups" {
-  source = "./modules/security"
-
-  environment = var.environment
-  vpc_id      = module.vpc.vpc_id
-}
-
-# Application Load Balancer Module
-module "alb" {
-  source = "./modules/alb"
-
-  environment          = var.environment
-  vpc_id              = module.vpc.vpc_id
-  public_subnets      = module.vpc.public_subnet_ids
-  alb_security_group  = module.security_groups.alb_security_group_id
-  certificate_arn     = var.certificate_arn
-  container_port      = var.container_port
-  health_check_path   = var.health_check_path
-}
-
-# Blue Environment (ECS Service)
-module "blue_environment" {
-  source = "./modules/ecs-service"
-
-  environment           = "${var.environment}-blue"
-  vpc_id               = module.vpc.vpc_id
-  private_subnets      = module.vpc.private_subnet_ids
-  ecs_security_group   = module.security_groups.ecs_security_group_id
-  target_group_arn     = module.alb.blue_target_group_arn
-  container_image      = var.blue_container_image
-  container_port       = var.container_port
-  desired_count        = var.active_environment == "blue" ? var.desired_count : var.standby_count
-  cpu                  = var.task_cpu
-  memory               = var.task_memory
-  health_check_path    = var.health_check_path
-  app_name             = var.app_name
-}
-
-# Green Environment (ECS Service)
-module "green_environment" {
-  source = "./modules/ecs-service"
-
-  environment           = "${var.environment}-green"
-  vpc_id               = module.vpc.vpc_id
-  private_subnets      = module.vpc.private_subnet_ids
-  ecs_security_group   = module.security_groups.ecs_security_group_id
-  target_group_arn     = module.alb.green_target_group_arn
-  container_image      = var.green_container_image
-  container_port       = var.container_port
-  desired_count        = var.active_environment == "green" ? var.desired_count : var.standby_count
-  cpu                  = var.task_cpu
-  memory               = var.task_memory
-  health_check_path    = var.health_check_path
-  app_name             = var.app_name
-}
-
-# Route53 DNS (Optional)
-module "route53" {
-  source = "./modules/route53"
-  count  = var.domain_name != "" ? 1 : 0
-
-  domain_name = var.domain_name
-  alb_dns     = module.alb.alb_dns_name
-  alb_zone_id = module.alb.alb_zone_id
-  environment = var.environment
-}
-
-# CloudWatch Monitoring
-module "monitoring" {
-  source = "./modules/monitoring"
-
-  environment                = var.environment
-  alb_arn_suffix            = module.alb.alb_arn_suffix
-  blue_target_group_suffix  = module.alb.blue_target_group_arn_suffix
-  green_target_group_suffix = module.alb.green_target_group_arn_suffix
-  blue_cluster_name         = module.blue_environment.cluster_name
-  green_cluster_name        = module.green_environment.cluster_name
-  blue_service_name         = module.blue_environment.service_name
-  green_service_name        = module.green_environment.service_name
-  alarm_email               = var.alarm_email
+  depends_on = [
+    module.network,
+    module.environment,
+  ]
 }
